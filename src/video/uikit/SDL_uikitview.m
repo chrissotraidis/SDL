@@ -47,6 +47,7 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 
     SDL_TouchID directTouchId;
     SDL_TouchID indirectTouchId;
+    SDL_TouchID pencilTouchId;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -81,10 +82,12 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 
         directTouchId = 1;
         indirectTouchId = 2;
+        pencilTouchId = 3;
 
 #if !TARGET_OS_TV
         self.multipleTouchEnabled = YES;
         SDL_AddTouch(directTouchId, SDL_TOUCH_DEVICE_DIRECT, "");
+        SDL_AddTouch(pencilTouchId, SDL_TOUCH_DEVICE_DIRECT, "Apple Pencil");
 #endif
 
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
@@ -200,6 +203,16 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
     }
 }
 
+- (SDL_TouchID)touchIdForTouch:(UITouch *)touch
+{
+#ifdef __IPHONE_9_1
+    if (touch.type == UITouchTypePencil) {
+        return pencilTouchId;
+    }
+#endif
+    return [self touchIdForType:[self touchTypeForTouch:touch]];
+}
+
 - (CGPoint)touchLocation:(UITouch *)touch shouldNormalize:(BOOL)normalize
 {
     CGPoint point = [touch locationInView:self];
@@ -264,7 +277,7 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
         if (!handled) {
             CGPoint locationInView;
             SDL_TouchDeviceType touchType = [self touchTypeForTouch:touch];
-            SDL_TouchID touchId = [self touchIdForType:touchType];
+            SDL_TouchID touchId = [self touchIdForTouch:touch];
             float pressure = [self pressureForTouch:touch];
 
             if (SDL_AddTouch(touchId, touchType, "") < 0) {
@@ -320,7 +333,7 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
         if (!handled) {
             CGPoint locationInView;
             SDL_TouchDeviceType touchType = [self touchTypeForTouch:touch];
-            SDL_TouchID touchId = [self touchIdForType:touchType];
+            SDL_TouchID touchId = [self touchIdForTouch:touch];
             float pressure = [self pressureForTouch:touch];
 
             if (SDL_AddTouch(touchId, touchType, "") < 0) {
@@ -357,7 +370,7 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
         if (!handled) {
             CGPoint locationInView;
             SDL_TouchDeviceType touchType = [self touchTypeForTouch:touch];
-            SDL_TouchID touchId = [self touchIdForType:touchType];
+            SDL_TouchID touchId = [self touchIdForTouch:touch];
             float pressure = [self pressureForTouch:touch];
 
             if (SDL_AddTouch(touchId, touchType, "") < 0) {
