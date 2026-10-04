@@ -28,6 +28,7 @@
 #include "SDL_main.h"
 
 #import "SDL_uikitappdelegate.h"
+#import "SDL_uikitvideo.h"
 #import "SDL_uikitmodes.h"
 #import "SDL_uikitwindow.h"
 
@@ -89,7 +90,7 @@ SDL_IdleTimerDisabledChanged(void *userdata, const char *name, const char *oldVa
 /* Load a launch image using the old UILaunchImageFile-era naming rules. */
 static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
 {
-    UIInterfaceOrientation curorient = [UIApplication sharedApplication].statusBarOrientation;
+    UIInterfaceOrientation curorient = UIKit_GetInterfaceOrientation();
     UIUserInterfaceIdiom idiom = [UIDevice currentDevice].userInterfaceIdiom;
     UIImage *image = nil;
 
@@ -219,7 +220,7 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
         int screenh = (int)([UIScreen mainScreen].bounds.size.height + 0.5);
 
 #if !TARGET_OS_TV
-        UIInterfaceOrientation curorient = [UIApplication sharedApplication].statusBarOrientation;
+        UIInterfaceOrientation curorient = UIKit_GetInterfaceOrientation();
 
         /* We always want portrait-oriented size, to match UILaunchImageSize. */
         if (screenw > screenh) {
@@ -412,6 +413,30 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+    /* Scene-enabled apps start only after UIKit connects their application scene. */
+    if ([[NSBundle mainBundle] objectForInfoDictionaryKey:@"UIApplicationSceneManifest"]) {
+        return YES;
+    }
+    return [self startSDLForScene:nil];
+}
+
+- (UISceneConfiguration *)application:(UIApplication *)application configurationForConnectingSceneSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
+{
+    UISceneConfiguration *config = [[UISceneConfiguration alloc] initWithName:@"SDLSceneConfiguration" sessionRole:session.role];
+    if ([session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+        config.delegateClass = [SDLUIKitSceneDelegate class];
+    }
+    return config;
+}
+
+- (BOOL)startSDLForScene:(UIWindowScene *)scene
+{
+    /* External displays and reconnects must never call SDL_main a second time. */
+    static BOOL started = NO;
+    if (started) {
+        return YES;
+    }
+    started = YES;
     NSBundle *bundle = [NSBundle mainBundle];
 
 #ifdef SDL_IPHONE_LAUNCHSCREEN
@@ -448,7 +473,11 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
     }
 
     if (vc.view) {
-        launchWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        launchWindow = scene ? [[UIWindow alloc] initWithWindowScene:scene]
+                             : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        if (scene) {
+            launchWindow.frame = scene.coordinateSpace.bounds;
+        }
 
         /* We don't want the launch window immediately hidden when a real SDL
          * window is shown - we fade it out ourselves when we're ready. */
@@ -524,6 +553,43 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
 }
 
 #endif
+
+@end
+
+/* SDL 2.32.10 scene backport. SDL's existing notification observer continues to
+ * deliver application foreground/background, memory and termination events. */
+@implementation SDLUIKitSceneDelegate
+
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
+{
+    if (![scene isKindOfClass:[UIWindowScene class]] ||
+        ![session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+        return;
+    }
+    SDLUIKitDelegate *delegate = [SDLUIKitDelegate sharedAppDelegate];
+    [delegate startSDLForScene:(UIWindowScene *)scene];
+    for (UIOpenURLContext *context in options.URLContexts) {
+        [delegate sendDropFileForURL:context.URL];
+    }
+}
+
+#if !TARGET_OS_TV && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+- (void)windowScene:(UIWindowScene *)windowScene didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousGeometry API_AVAILABLE(ios(26.0))
+{
+    if (@available(iOS 27.0, *)) {
+        if (windowScene.effectiveGeometry.interfaceOrientation != previousGeometry.interfaceOrientation) {
+            SDL_OnApplicationDidChangeStatusBarOrientation();
+        }
+    }
+}
+#endif
+
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)contexts
+{
+    for (UIOpenURLContext *context in contexts) {
+        [[SDLUIKitDelegate sharedAppDelegate] sendDropFileForURL:context.URL];
+    }
+}
 
 @end
 

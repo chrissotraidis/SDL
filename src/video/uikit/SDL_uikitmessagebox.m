@@ -99,7 +99,22 @@ static BOOL UIKit_ShowMessageBoxAlertController(const SDL_MessageBoxData *messag
     }
 
     if (window == nil || window.rootViewController == nil) {
-        alertwindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        /* SDL 2.32.10 scene backport: first-run alerts also need an application scene. */
+        UIWindowScene *windowScene = nil;
+        if (@available(iOS 13.0, tvOS 13.0, *)) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]] &&
+                    [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+                    windowScene = (UIWindowScene *)scene;
+                    break;
+                }
+            }
+        }
+        alertwindow = windowScene ? [[UIWindow alloc] initWithWindowScene:windowScene]
+                                  : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        if (windowScene) {
+            alertwindow.frame = windowScene.coordinateSpace.bounds;
+        }
         alertwindow.rootViewController = [UIViewController new];
         alertwindow.windowLevel = UIWindowLevelAlert;
 
