@@ -35,6 +35,7 @@
 + (NSString *)getAppDelegateClassName;
 
 - (void)hideLaunchScreen;
+- (BOOL)startSDLForScene:(UIWindowScene *)scene API_AVAILABLE(ios(13.0), tvos(13.0));
 
 /* This property is marked as optional, and is only intended to be used when
  * the app's UI is storyboard-based. SDL is not storyboard-based, however
@@ -42,6 +43,11 @@
  * property always exists, and will crash if it doesn't. */
 @property (nonatomic) UIWindow *window;
 
+@end
+
+/* SDL 2.32.10 scene backport: a single application scene owns SDL startup. */
+API_AVAILABLE(ios(13.0), tvos(13.0))
+@interface SDLUIKitSceneDelegate : NSObject<UIWindowSceneDelegate>
 @end
 
 /* vi: set ts=4 sw=4 expandtab: */

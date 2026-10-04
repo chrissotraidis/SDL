@@ -194,6 +194,24 @@ SDL_bool UIKit_IsSystemVersionAtLeast(double version)
     return [[UIDevice currentDevice].systemVersion doubleValue] >= version;
 }
 
+#if !TARGET_OS_TV
+/* SDL 2.32.10 scene backport, informed by SDL upstream 114aca1727c7. */
+UIInterfaceOrientation UIKit_GetInterfaceOrientation(void)
+{
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]] && [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+            UIWindowScene *windowScene=(UIWindowScene *)scene;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+            if (@available(iOS 27.0, *)) return windowScene.effectiveGeometry.interfaceOrientation;
+#endif
+            return windowScene.interfaceOrientation;
+        }
+    }
+    return [UIApplication sharedApplication].statusBarOrientation;
+}
+
+#endif
+
 CGRect UIKit_ComputeViewFrame(SDL_Window *window, UIScreen *screen)
 {
     SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
@@ -220,7 +238,7 @@ CGRect UIKit_ComputeViewFrame(SDL_Window *window, UIScreen *screen)
      * https://bugzilla.libsdl.org/show_bug.cgi?id=3505
      * https://bugzilla.libsdl.org/show_bug.cgi?id=3465
      * https://forums.developer.apple.com/thread/65337 */
-    orient = [UIApplication sharedApplication].statusBarOrientation;
+    orient = UIKit_GetInterfaceOrientation();
     landscape = UIInterfaceOrientationIsLandscape(orient) ||
                     !(UIKit_GetSupportedOrientations(window) & (UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskPortraitUpsideDown));
     fullscreen = CGRectEqualToRect(screen.bounds, frame);

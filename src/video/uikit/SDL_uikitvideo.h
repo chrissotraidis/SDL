@@ -33,6 +33,11 @@
 
 @end
 
+/* SDL 2.32.10 scene backport: SDK 27 requires scene-aware orientation. */
+#if !TARGET_OS_TV
+UIInterfaceOrientation UIKit_GetInterfaceOrientation(void);
+#endif
+
 CGRect UIKit_ComputeViewFrame(SDL_Window *window, UIScreen *screen);
 
 #endif /* __OBJC__ */
