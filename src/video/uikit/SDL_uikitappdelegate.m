@@ -610,6 +610,15 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
 }
 #endif
 
+- (void)sceneDidDisconnect:(UIScene *)scene
+{
+    /* UIKit can keep a disconnected scene object alive, so clear the owner
+     * here; a replacement scene then adopts SDL's windows. */
+    if (scene == SDL_owningScene) {
+        SDL_owningScene = nil;
+    }
+}
+
 - (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)contexts
 {
     for (UIOpenURLContext *context in contexts) {
