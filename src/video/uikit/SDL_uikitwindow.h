@@ -42,6 +42,11 @@ extern SDL_bool UIKit_GetWindowWMInfo(_THIS, SDL_Window * window,
 
 extern NSUInteger UIKit_GetSupportedOrientations(SDL_Window * window);
 
+#if !TARGET_OS_TV
+/* Resize SDL's window after its scene's geometry or screen changes. */
+extern void UIKit_UpdateWindowsForScene(UIWindowScene *scene) API_AVAILABLE(ios(13.0));
+#endif
+
 @class UIWindow;
 
 @interface SDL_WindowData : NSObject
@@ -51,6 +56,9 @@ extern NSUInteger UIKit_GetSupportedOrientations(SDL_Window * window);
 
 /* Array of SDL_uikitviews owned by this window. */
 @property (nonatomic, copy) NSMutableArray *views;
+
+/* nativeScale of the screen the window was last seen on. */
+@property (nonatomic, assign) CGFloat screenScale;
 
 @end
 

@@ -198,9 +198,9 @@ SDL_bool UIKit_IsSystemVersionAtLeast(double version)
 /* SDL 2.32.10 scene backport, informed by SDL upstream 114aca1727c7. */
 UIInterfaceOrientation UIKit_GetInterfaceOrientation(void)
 {
-    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-        if ([scene isKindOfClass:[UIWindowScene class]] && [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
-            UIWindowScene *windowScene=(UIWindowScene *)scene;
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *windowScene = UIKit_GetOwningWindowScene();
+        if (windowScene) {
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
             if (@available(iOS 27.0, *)) return windowScene.effectiveGeometry.interfaceOrientation;
 #endif
@@ -227,6 +227,13 @@ CGRect UIKit_ComputeViewFrame(SDL_Window *window, UIScreen *screen)
      * is used on an iPad. */
     if (data != nil && data.uiwindow != nil) {
         frame = data.uiwindow.bounds;
+
+        /* A window in a scene already has that scene's oriented bounds. */
+        if (@available(iOS 13.0, tvOS 13.0, *)) {
+            if (data.uiwindow.windowScene != nil) {
+                return frame;
+            }
+        }
     }
 
 #if !TARGET_OS_TV
