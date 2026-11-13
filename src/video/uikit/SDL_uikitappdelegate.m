@@ -51,6 +51,14 @@ static int forward_argc;
 static char **forward_argv;
 static int exit_status;
 
+/* SDL 2.32.10 scene backport: the application scene that started SDL. */
+static __weak UIWindowScene *SDL_owningScene API_AVAILABLE(ios(13.0), tvos(13.0));
+
+UIWindowScene *UIKit_GetOwningWindowScene(void)
+{
+    return SDL_owningScene;
+}
+
 int SDL_UIKitRunApp(int argc, char *argv[], SDL_main_func mainFunction)
 {
     int i;
@@ -434,9 +442,17 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
     /* External displays and reconnects must never call SDL_main a second time. */
     static BOOL started = NO;
     if (started) {
+#if !TARGET_OS_TV
+        /* A replacement for a discarded owning scene adopts SDL's windows. */
+        if (scene != nil && SDL_owningScene == nil) {
+            SDL_owningScene = scene;
+            UIKit_AdoptOwningScene(scene);
+        }
+#endif
         return YES;
     }
     started = YES;
+    SDL_owningScene = scene;
     NSBundle *bundle = [NSBundle mainBundle];
 
 #ifdef SDL_IPHONE_LAUNCHSCREEN
@@ -576,13 +592,32 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
 #if !TARGET_OS_TV && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
 - (void)windowScene:(UIWindowScene *)windowScene didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousGeometry API_AVAILABLE(ios(26.0))
 {
+    UIKit_UpdateWindowsForScene(windowScene);
     if (@available(iOS 27.0, *)) {
-        if (windowScene.effectiveGeometry.interfaceOrientation != previousGeometry.interfaceOrientation) {
+        if (windowScene == SDL_owningScene &&
+            windowScene.effectiveGeometry.interfaceOrientation != previousGeometry.interfaceOrientation) {
             SDL_OnApplicationDidChangeStatusBarOrientation();
         }
     }
 }
 #endif
+
+#if !TARGET_OS_TV
+/* Called before iOS 26 when the scene rotates, resizes or moves to another screen. */
+- (void)windowScene:(UIWindowScene *)windowScene didUpdateCoordinateSpace:(id<UICoordinateSpace>)previousCoordinateSpace interfaceOrientation:(UIInterfaceOrientation)previousInterfaceOrientation traitCollection:(UITraitCollection *)previousTraitCollection
+{
+    UIKit_UpdateWindowsForScene(windowScene);
+}
+#endif
+
+- (void)sceneDidDisconnect:(UIScene *)scene
+{
+    /* UIKit can keep a disconnected scene object alive, so clear the owner
+     * here; a replacement scene then adopts SDL's windows. */
+    if (scene == SDL_owningScene) {
+        SDL_owningScene = nil;
+    }
+}
 
 - (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)contexts
 {
