@@ -89,10 +89,9 @@ static int SetupWindowData(_THIS, SDL_Window *window, UIWindow *uiwindow, SDL_bo
     SDL_VideoDisplay *display = SDL_GetDisplayForWindow(window);
     SDL_DisplayData *displaydata = (__bridge SDL_DisplayData *) display->driverdata;
     SDL_uikitview *view;
-
-    CGRect frame = UIKit_ComputeViewFrame(window, displaydata.uiscreen);
-    int width  = (int) frame.size.width;
-    int height = (int) frame.size.height;
+    CGRect frame;
+    int width;
+    int height;
 
     SDL_WindowData *data = [[SDL_WindowData alloc] init];
     if (!data) {
@@ -102,6 +101,12 @@ static int SetupWindowData(_THIS, SDL_Window *window, UIWindow *uiwindow, SDL_bo
     window->driverdata = (void *) CFBridgingRetain(data);
 
     data.uiwindow = uiwindow;
+    data.screenScale = uiwindow.screen.nativeScale;
+
+    /* Computed after uiwindow is set so a scene window uses its own bounds. */
+    frame = UIKit_ComputeViewFrame(window, displaydata.uiscreen);
+    width  = (int) frame.size.width;
+    height = (int) frame.size.height;
 
     /* only one window on iOS, always shown */
     window->flags &= ~SDL_WINDOW_HIDDEN;
@@ -207,16 +212,14 @@ int UIKit_CreateWindow(_THIS, SDL_Window *window)
 
         /* ignore the size user requested, and make a fullscreen window */
         /* !!! FIXME: can we have a smaller view? */
-        /* SDL 2.32.10 scene backport: attach SDL's real window to the connected scene. */
+        /* SDL 2.32.10 scene backport: attach SDL's real window to the application
+         * scene that started SDL, whichever screen that scene is on. A window
+         * requested on another display keeps the old screen-based path. */
         UIWindowScene *windowScene = nil;
         if (@available(iOS 13.0, tvOS 13.0, *)) {
-            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-                if ([scene isKindOfClass:[UIWindowScene class]] &&
-                    [(UIWindowScene *)scene screen] == data.uiscreen &&
-                    [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
-                    windowScene = (UIWindowScene *)scene;
-                    break;
-                }
+            UIWindowScene *owningScene = UIKit_GetOwningWindowScene();
+            if (owningScene && (owningScene.screen == data.uiscreen || data.uiscreen == [UIScreen mainScreen])) {
+                windowScene = owningScene;
             }
         }
         if (windowScene) {
@@ -224,11 +227,11 @@ int UIKit_CreateWindow(_THIS, SDL_Window *window)
             uiwindow.frame = windowScene.coordinateSpace.bounds;
         } else {
             uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
-        }
 
-        /* put the window on an external display if appropriate. */
-        if (data.uiscreen != [UIScreen mainScreen]) {
-            [uiwindow setScreen:data.uiscreen];
+            /* put the window on an external display if appropriate. */
+            if (data.uiscreen != [UIScreen mainScreen]) {
+                [uiwindow setScreen:data.uiscreen];
+            }
         }
 
         if (SetupWindowData(_this, window, uiwindow, SDL_TRUE) < 0) {
@@ -238,6 +241,82 @@ int UIKit_CreateWindow(_THIS, SDL_Window *window)
 
     return 1;
 }
+
+#if !TARGET_OS_TV
+void UIKit_UpdateWindowsForScene(UIWindowScene *scene)
+{
+    @autoreleasepool {
+        SDL_VideoDevice *_this = SDL_GetVideoDevice();
+        SDL_Window *window;
+
+        if (!_this) {
+            return;
+        }
+
+        for (window = _this->windows; window != NULL; window = window->next) {
+            SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
+            CGRect bounds = scene.coordinateSpace.bounds;
+            CGFloat scale = scene.screen.nativeScale;
+            BOOL scaleChanged = NO;
+
+            if (data == nil || data.uiwindow.windowScene != scene) {
+                continue;
+            }
+
+            /* If the scene moved to a screen with a different scale, move views
+             * still at SDL's old scale to the new one. Views whose scale the
+             * game changed, and the game's render size, are left alone. */
+            if ((window->flags & SDL_WINDOW_ALLOW_HIGHDPI) && data.screenScale != scale) {
+                for (UIView *view in data.views) {
+                    if (view.contentScaleFactor == data.screenScale) {
+                        view.contentScaleFactor = scale;
+                        [view setNeedsLayout];
+                        scaleChanged = YES;
+                    }
+                }
+            }
+            data.screenScale = scale;
+
+            /* Layout reports any size change through viewDidLayoutSubviews. */
+            if (!CGRectEqualToRect(data.uiwindow.frame, bounds)) {
+                data.uiwindow.frame = bounds;
+            }
+            [data.uiwindow layoutIfNeeded];
+
+            if (scaleChanged) {
+                /* Also invalidates any window surface sized for the old scale. */
+                SDL_OnWindowResized(window);
+            }
+        }
+    }
+}
+
+void UIKit_AdoptOwningScene(UIWindowScene *scene)
+{
+    @autoreleasepool {
+        SDL_VideoDevice *_this = SDL_GetVideoDevice();
+        SDL_Window *window;
+
+        if (!_this) {
+            return;
+        }
+
+        /* iOS discarded the scene SDL started in and connected a new one:
+         * move SDL's orphaned windows onto it instead of leaving them blank. */
+        for (window = _this->windows; window != NULL; window = window->next) {
+            SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
+            if (data == nil || data.uiwindow == nil || data.uiwindow.windowScene != nil) {
+                continue;
+            }
+            data.uiwindow.windowScene = scene;
+            if (window->flags & SDL_WINDOW_SHOWN) {
+                [data.uiwindow makeKeyAndVisible];
+            }
+        }
+        UIKit_UpdateWindowsForScene(scene);
+    }
+}
+#endif /* !TARGET_OS_TV */
 
 void UIKit_SetWindowTitle(_THIS, SDL_Window * window)
 {

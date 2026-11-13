@@ -38,6 +38,9 @@
 UIInterfaceOrientation UIKit_GetInterfaceOrientation(void);
 #endif
 
+/* The application scene that started SDL owns SDL's window (weak; may be nil). */
+UIWindowScene *UIKit_GetOwningWindowScene(void) API_AVAILABLE(ios(13.0), tvos(13.0));
+
 CGRect UIKit_ComputeViewFrame(SDL_Window *window, UIScreen *screen);
 
 #endif /* __OBJC__ */

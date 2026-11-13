@@ -102,11 +102,20 @@ static BOOL UIKit_ShowMessageBoxAlertController(const SDL_MessageBoxData *messag
         /* SDL 2.32.10 scene backport: first-run alerts also need an application scene. */
         UIWindowScene *windowScene = nil;
         if (@available(iOS 13.0, tvOS 13.0, *)) {
-            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-                if ([scene isKindOfClass:[UIWindowScene class]] &&
-                    [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
-                    windowScene = (UIWindowScene *)scene;
-                    break;
+            windowScene = UIKit_GetOwningWindowScene();
+            if (windowScene == nil) {
+                /* The owning scene is gone: use a connected application scene,
+                 * preferring the one in the foreground. */
+                for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] &&
+                        [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+                        if (windowScene == nil || scene.activationState == UISceneActivationStateForegroundActive) {
+                            windowScene = (UIWindowScene *)scene;
+                        }
+                        if (scene.activationState == UISceneActivationStateForegroundActive) {
+                            break;
+                        }
+                    }
                 }
             }
         }
