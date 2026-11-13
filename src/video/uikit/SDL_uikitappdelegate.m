@@ -442,6 +442,13 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
     /* External displays and reconnects must never call SDL_main a second time. */
     static BOOL started = NO;
     if (started) {
+#if !TARGET_OS_TV
+        /* A replacement for a discarded owning scene adopts SDL's windows. */
+        if (scene != nil && SDL_owningScene == nil) {
+            SDL_owningScene = scene;
+            UIKit_AdoptOwningScene(scene);
+        }
+#endif
         return YES;
     }
     started = YES;

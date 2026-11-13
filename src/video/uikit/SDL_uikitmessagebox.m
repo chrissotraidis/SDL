@@ -103,6 +103,16 @@ static BOOL UIKit_ShowMessageBoxAlertController(const SDL_MessageBoxData *messag
         UIWindowScene *windowScene = nil;
         if (@available(iOS 13.0, tvOS 13.0, *)) {
             windowScene = UIKit_GetOwningWindowScene();
+            if (windowScene == nil) {
+                /* The owning scene is gone: any connected application scene can show the alert. */
+                for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] &&
+                        [scene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+                        windowScene = (UIWindowScene *)scene;
+                        break;
+                    }
+                }
+            }
         }
         alertwindow = windowScene ? [[UIWindow alloc] initWithWindowScene:windowScene]
                                   : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];

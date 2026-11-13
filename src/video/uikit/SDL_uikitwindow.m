@@ -284,9 +284,36 @@ void UIKit_UpdateWindowsForScene(UIWindowScene *scene)
             [data.uiwindow layoutIfNeeded];
 
             if (scaleChanged) {
-                SDL_SendWindowEvent(window, SDL_WINDOWEVENT_SIZE_CHANGED, window->w, window->h);
+                /* Also invalidates any window surface sized for the old scale. */
+                SDL_OnWindowResized(window);
             }
         }
+    }
+}
+
+void UIKit_AdoptOwningScene(UIWindowScene *scene)
+{
+    @autoreleasepool {
+        SDL_VideoDevice *_this = SDL_GetVideoDevice();
+        SDL_Window *window;
+
+        if (!_this) {
+            return;
+        }
+
+        /* iOS discarded the scene SDL started in and connected a new one:
+         * move SDL's orphaned windows onto it instead of leaving them blank. */
+        for (window = _this->windows; window != NULL; window = window->next) {
+            SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
+            if (data == nil || data.uiwindow == nil || data.uiwindow.windowScene != nil) {
+                continue;
+            }
+            data.uiwindow.windowScene = scene;
+            if (window->flags & SDL_WINDOW_SHOWN) {
+                [data.uiwindow makeKeyAndVisible];
+            }
+        }
+        UIKit_UpdateWindowsForScene(scene);
     }
 }
 #endif /* !TARGET_OS_TV */
