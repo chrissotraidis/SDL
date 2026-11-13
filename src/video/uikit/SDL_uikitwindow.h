@@ -45,6 +45,7 @@ extern NSUInteger UIKit_GetSupportedOrientations(SDL_Window * window);
 #if !TARGET_OS_TV
 /* Resize SDL's window after its scene's geometry or screen changes. */
 extern void UIKit_UpdateWindowsForScene(UIWindowScene *scene) API_AVAILABLE(ios(13.0));
+extern void UIKit_AdoptOwningScene(UIWindowScene *scene) API_AVAILABLE(ios(13.0));
 #endif
 
 @class UIWindow;
